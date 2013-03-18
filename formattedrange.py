@@ -11,8 +11,14 @@ list of strings in which the range has been expanded.
   % ./formattedrange.py "b[01,03-05]"
   b01 b03 b04 b05
 
+  % ./formattedrange.py "b[01-02,05-10]"
+  b01 b02 b05 b06 b07 b08 b09 b10
+
   NOTE: same command but without double quotes:
   % ./formattedrange.py b\[01-05\]
+
+  %./formattedrange.py -f"%y%m%d" "b[201202026-20120301]c"
+  b120226c b120227c b120228c b120229c b120301c
 
 * The default delimiter is one space but it can be changed:
   % ./formattedrange.py -d $'\n' "b[01-02]"
@@ -43,6 +49,7 @@ usage_msg = 'Usage: ' + myself + ' [options...] <source> <destination>' + """
 Options:
  -h/--help                This help text
  -d/--delimiter <char>    Use the given characters as line delimiter
+ -f/--format <str>        Specify a date range with given standard date format
 
  Using '-' as last option means read from stdin
 """
@@ -90,44 +97,43 @@ class FormattedRange(object):
         self._begin = None
         self._end = None
         self._msg = "%s%d%s"
-        self._count = 0
         self._sep = sep or ' '
         if not self._hascomma:
             self._found = self.my_regexp.match(self._s)
         else:
             self._found = self.my_regexp2.match(self._s)
+
         self._setup()
+
+
+    def _get_range(self):
+        if self._found.group(2).startswith('0'):
+            self._formatted = True
+        if not self._hascomma:
+            self._res = self._found.group(2)
+            return (range(int(self._found.group(2)),
+                         int(self._found.group(3)) + 1), 4)
+        else:
+            self._res = self._found.group(2).split(',')[0]
+            if '-' in self._res:
+                self._res = self._res.split('-')[0]
+            return (str_numrange_to_list(self._found.group(2)), 3)
 
     def _setup(self):
         if self._found is None:
             return
         self._begin = self._found.group(1)
-        if not self._hascomma:
-            self._extended = range(int(self._found.group(2)),
-                                   int(self._found.group(3)) + 1)
-            self._end = self._found.group(4)
-        else:
-            self._extended = str_numrange_to_list(self._found.group(2))
-            self._end = self._found.group(3)
-
-        if self._found.group(2).startswith('0'):
-            self._formatted = True
-
-        if not self._hascomma:
-            _res = self._found.group(2)
-        elif self._hascomma:
-            _res = self._found.group(2).split(',')[0]
-            if '-' in _res:
-                _res = _res.split('-')[0]
-        self._count = len(_res)
-
-        if self._formatted:
-            # Use X digits formatting
-            self._msg = "%s%0" + str(self._count) + "d%s"
+        self._extended, i = self._get_range()
+        self._end = self._found.group(i)
 
     def get(self, sort=True):
         if self._found is None:
             return [self._s]
+
+        if self._formatted:
+            # Use X digits formatting
+            self._msg = "%s%0" + str(len(self._res)) + "d%s"
+
         ret = []
         if sort:
             # Remove overlapping ranges
@@ -144,8 +150,38 @@ class FormattedRange(object):
         return self._sep.join(self.get())
 
 
+class FormattedDateRange(FormattedRange):
+    """
+    A class which knows how to parse a datetime range and return it as a list
+    of strings
+    """
+    def __init__(self, s, date_format="%Y%m%d", sep=None):
+        self._date_format = date_format
+        FormattedRange.__init__(self, s, sep=sep)
+        self._msg = "%s%s%s"
+
+    def _get_range(self):
+        from dateutil import parser, rrule
+        self._formatted = False
+        self._res = self._found.group(2)
+        d1 = parser.parse(self._found.group(2))
+        d2 = parser.parse(self._found.group(3))
+        r = rrule.rrule(rrule.DAILY, dtstart=d1, until=d2)
+        return ([i.strftime(self._date_format) for i in r], 4)
+
+    def get(self):
+        if self._found is None:
+            return [self._s]
+        ls = self._extended
+        ret = []
+        for i in ls:
+            ret.append(self._msg % (self._begin, i, self._end))
+        return ret
+
+
 def main(args=None):
     delim = ' '
+    format_opt = None
 
     if len(sys.argv) == 1:
         sys.stderr.write("Error: " + myself + " needs at least one argument\n")
@@ -157,7 +193,8 @@ def main(args=None):
     opts = None
     remainder = None
     try:
-        opts, remainder = getopt.getopt(cliargs, "hd:", ['help', 'delimiter='])
+        opts, remainder = getopt.getopt(cliargs, "hd:f:",
+                                        ['help', 'delimiter=', 'format='])
     except getopt.GetoptError, err:
         sys.stderr.write("Error: %s\n" % err)
         sys.stderr.write(usage_msg)
@@ -169,6 +206,8 @@ def main(args=None):
             sys.exit()
         if o in ('-d', '--delimiter'):
             delim = a
+        if o in ('-f', '--format'):
+            format_opt = a
 
     # To use stdin to input cmd use '-' (to use in cmd pipes)
     if '-' in cliargs:
@@ -181,7 +220,11 @@ def main(args=None):
         return 1
 
     for n, i in enumerate(remainder):
-        sys.stdout.write(str(FormattedRange(i, sep=delim)))
+        if format_opt is None:
+            sys.stdout.write(str(FormattedRange(i, sep=delim)))
+        else:
+            sys.stdout.write(str(FormattedDateRange(i, date_format=format_opt,
+                                                    sep=delim)))
         if n < len(remainder) - 1:
             sys.stdout.write(delim)
         else:
