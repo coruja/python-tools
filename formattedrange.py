@@ -105,7 +105,6 @@ class FormattedRange(object):
 
         self._setup()
 
-
     def _get_range(self):
         if self._found.group(2).startswith('0'):
             self._formatted = True
