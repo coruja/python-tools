@@ -45,11 +45,12 @@ import getopt
 
 myself = os.path.basename(sys.argv[0])
 
-usage_msg = 'Usage: ' + myself + ' [options...] <source> <destination>' + """
+usage_msg = 'Usage: ' + myself + ' [options...] <string formatted range>' + """
 Options:
  -h/--help                This help text
  -d/--delimiter <char>    Use the given characters as line delimiter
  -f/--format <str>        Specify a date range with given standard date format
+ -s/--sort                Sort the results and remove overlapping ranges
 
  Using '-' as last option means read from stdin
 """
@@ -87,7 +88,7 @@ class FormattedRange(object):
     my_regexp = re.compile('(.*)\[(\d+)\-(\d+)\](.*)')
     my_regexp2 = re.compile('(.*)\[(.*)\](.*)')
 
-    def __init__(self, s, sep=None):
+    def __init__(self, s, sep=None, sort=False):
         self._s = s
         self._hascomma = ',' in self._s
         self._formatted = False
@@ -98,6 +99,7 @@ class FormattedRange(object):
         self._end = None
         self._msg = "%s%d%s"
         self._sep = sep or ' '
+        self._sort = sort
         if not self._hascomma:
             self._found = self.my_regexp.match(self._s)
         else:
@@ -110,7 +112,7 @@ class FormattedRange(object):
             self._formatted = True
         if not self._hascomma:
             self._res = self._found.group(2)
-            return (range(int(self._found.group(2)),
+            return (xrange(int(self._found.group(2)),
                          int(self._found.group(3)) + 1), 4)
         else:
             self._res = self._found.group(2).split(',')[0]
@@ -125,7 +127,7 @@ class FormattedRange(object):
         self._extended, i = self._get_range()
         self._end = self._found.group(i)
 
-    def get(self, sort=True):
+    def get(self):
         if self._found is None:
             return [self._s]
 
@@ -134,8 +136,10 @@ class FormattedRange(object):
             self._msg = "%s%0" + str(len(self._res)) + "d%s"
 
         ret = []
-        if sort:
+        if self._sort:
             # Remove overlapping ranges
+            # Doing this will use more memory and expand the generator
+            # into a set with unique items and than convert the set to a list
             self._sorted = list(set(self._extended[:]))
             self._sorted.sort()
             ls = self._sorted
@@ -154,9 +158,9 @@ class FormattedDateRange(FormattedRange):
     A class which knows how to parse a datetime range and return it as a list
     of strings
     """
-    def __init__(self, s, date_format="%Y%m%d", sep=None):
+    def __init__(self, s, date_format="%Y%m%d", sep=None, sort=False):
         self._date_format = date_format
-        FormattedRange.__init__(self, s, sep=sep)
+        FormattedRange.__init__(self, s, sep=sep, sort=sort)
         self._msg = "%s%s%s"
 
     def _get_range(self):
@@ -181,6 +185,7 @@ class FormattedDateRange(FormattedRange):
 def main(args=None):
     delim = ' '
     format_opt = None
+    sort = False
 
     if len(sys.argv) == 1:
         sys.stderr.write("Error: " + myself + " needs at least one argument\n")
@@ -192,8 +197,8 @@ def main(args=None):
     opts = None
     remainder = None
     try:
-        opts, remainder = getopt.getopt(cliargs, "hd:f:",
-                                        ['help', 'delimiter=', 'format='])
+        opts, remainder = getopt.getopt(cliargs, "hsd:f:",
+                                ['help', 'sort', 'delimiter=', 'format='])
     except getopt.GetoptError, err:
         sys.stderr.write("Error: %s\n" % err)
         sys.stderr.write(usage_msg)
@@ -203,10 +208,12 @@ def main(args=None):
         if o in ('-h', '--help'):
             sys.stdout.write(usage_msg)
             sys.exit()
-        if o in ('-d', '--delimiter'):
+        elif o in ('-d', '--delimiter'):
             delim = a
-        if o in ('-f', '--format'):
+        elif o in ('-f', '--format'):
             format_opt = a
+        elif o in ('-s', '--sort'):
+            sort = True
 
     # To use stdin to input cmd use '-' (to use in cmd pipes)
     if '-' in cliargs:
@@ -220,10 +227,10 @@ def main(args=None):
 
     for n, i in enumerate(remainder):
         if format_opt is None:
-            sys.stdout.write(str(FormattedRange(i, sep=delim)))
+            sys.stdout.write(str(FormattedRange(i, sep=delim, sort=sort)))
         else:
             sys.stdout.write(str(FormattedDateRange(i, date_format=format_opt,
-                                                    sep=delim)))
+                                                    sep=delim, sort=sort)))
         if n < len(remainder) - 1:
             sys.stdout.write(delim)
         else:
