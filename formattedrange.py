@@ -55,6 +55,18 @@ Options:
  Using '-' as last option means read from stdin
 """
 
+def usage(msg=None):
+    s = None
+    err = 0
+    if msg and msg.startswith("Error:"):
+        s = sys.stderr
+        err = 1
+    else:
+        s = sys.stdout
+    if msg and s:
+        s.write(msg + "\n")
+    sys.stdout.write(usage_msg)
+    return err
 
 def str_numrange_to_list(x):
     """
@@ -183,16 +195,17 @@ class FormattedDateRange(FormattedRange):
 
 
 def main(args=None):
+    """ The main function of this script
+    returns 0 on success or 1 otherwise
+    """
     delim = ' '
     format_opt = None
     sort = False
 
-    if len(sys.argv) == 1:
-        sys.stderr.write("Error: " + myself + " needs at least one argument\n")
-        sys.stderr.write(usage_msg)
-        return 2
-
     cliargs = args or sys.argv[1:]
+
+    if cliargs and len(cliargs) == 0:
+        return usage("Error:" + myself + " needs at least one argument")
 
     opts = None
     remainder = None
@@ -200,14 +213,11 @@ def main(args=None):
         opts, remainder = getopt.getopt(cliargs, "hsd:f:",
                                 ['help', 'sort', 'delimiter=', 'format='])
     except getopt.GetoptError, err:
-        sys.stderr.write("Error: %s\n" % err)
-        sys.stderr.write(usage_msg)
-        return 2
+        return usage("Error: %s" % err)
 
     for o, a in opts:
         if o in ('-h', '--help'):
-            sys.stdout.write(usage_msg)
-            sys.exit()
+            return usage()
         elif o in ('-d', '--delimiter'):
             delim = a
         elif o in ('-f', '--format'):
@@ -221,9 +231,7 @@ def main(args=None):
 
     errmsg = " needs at least one string with numerical range as input"
     if not remainder:
-        sys.stderr.write("Error: " + myself + errmsg + "\n")
-        sys.stderr.write(usage_msg)
-        return 1
+        return usage("Error: " + myself + errmsg)
 
     for n, i in enumerate(remainder):
         if format_opt is None:
@@ -235,6 +243,8 @@ def main(args=None):
             sys.stdout.write(delim)
         else:
             sys.stdout.write('\n')
+
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main())
