@@ -1,9 +1,9 @@
 #!/usr/bin/python
 """
-Just fetch an APOD picture and print the url
+Just fetch an APOD picture URL and print it (no download)
 This can be combined with wget/curl to download
 Example:
-% f=$(python get_apod_data.py) && wget $f
+% f=$(get_apod_data.py) && wget $f
 NOTE: The caption for the picture is also saved in a .txt file
 """
 import sys
@@ -16,7 +16,8 @@ APOD_BASE_URL = 'http://apod.nasa.gov/apod'
 IMAGE_DIR = 'image/'
 APOD_HTML = '/astropix.html'
 BLANK_SPACES = re.compile('\s+')
-STRIP_TAGS = re.compile(r'</?\S([^=>]*=(\s*"[^"]*"|\s*\'[^\']*\'|\S*)|[^>])*?>', re.IGNORECASE)
+HTML_TAGS_RE = r'</?\S([^=>]*=(\s*"[^"]*"|\s*\'[^\']*\'|\S*)|[^>])*?>'
+STRIP_TAGS = re.compile(HTML_TAGS_RE, re.IGNORECASE)
 
 def split_lines(text):
     """ Split lines longer than 80 characters """
@@ -24,10 +25,19 @@ def split_lines(text):
     regex = re.compile(r'.{1,80}(?:\s+|$)')
     ret = []
     for line in lines:
-        for s in regex.findall(line):
-            sentence = re.sub(BLANK_SPACES, ' ', s)
+        for sentence in regex.findall(line):
+            sentence = re.sub(BLANK_SPACES, ' ', sentence)
             ret.append(sentence)
     return '\n'.join(ret)
+
+def _get_url(url):
+    """ Fetch and parse the HTML data from given url """
+    page_as_ls = urllib2.urlopen(url).readlines()
+    doc = ''.join()
+    soup = BeautifulSoup(doc)
+    res = [x['href'] for x in soup.findAll('a', href=True) \
+                        if IMAGE_DIR in x['href']]
+    return page_as_ls, res
 
 def main(args):
     """ The main function """
@@ -36,14 +46,11 @@ def main(args):
     else:    
         url = APOD_BASE_URL + APOD_HTML
 
-    page = urllib2.urlopen(url)
-    page_as_ls = page.readlines()
-    doc = ''.join(page_as_ls)
-    soup = BeautifulSoup(doc)
-    res = [x['href'] for x in soup.findAll('a', href=True) if image_root in x['href']]
+    # Fech the data from the given APOD url
+    page_as_ls, res = _get_url(url)
     if not res:
-        sys.exit("Could not find %s at %s" % (image_root, url))
-    img_file_url = url_root + '/' + res[0]
+        sys.exit("Could not find %s at %s" % (IMAGE_DIR, url))
+    img_file_url = APOD_BASE_URL + '/' + res[0]
     print img_file_url
 
     explanation = []
@@ -62,12 +69,13 @@ def main(args):
 
     # Trick to also detect jpg and JPG case insensitive
     case_insensitive_re = re.compile(re.escape('jpg'), re.IGNORECASE)
-    explanation_fn = case_insensitive_re.sub('txt', os.path.basename(img_file_url))
+    explanation_fn = case_insensitive_re.sub('txt',
+                                             os.path.basename(img_file_url))
     html = ''.join(explanation)    
     text = STRIP_TAGS.sub('', html).lstrip()
-    f = open(explanation_fn, 'w')
-    f.write(split_lines(text))
-    f.close()
+    explanation_f = open(explanation_fn, 'w')
+    explanation_f.write(split_lines(text))
+    explanation_f.close()
 
 if __name__ == "__main__":
     main(sys.argv[1:])
