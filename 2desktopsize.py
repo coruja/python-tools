@@ -3,6 +3,7 @@ import os
 import re
 import sys
 from PIL import Image
+from optparse import OptionParser
 
 def resize(img, box, fit):
     '''Downsample the image.
@@ -45,11 +46,28 @@ def find_desktop_dimensions():
         return int(dims[0]), int(dims[1])
     return
 
-def main(src, verb=False):
+def main():
+    parser = OptionParser()
+    parser.add_option("-s", "--size", type="string", dest="size",
+                      action="store", help="Dimensions (w x h)")
+    parser.add_option("-v", "--verb", dest="verb", default=False,
+                      action="store_false", help="Verbosity")
+    parser.add_option("-f", "--with-face-detect", dest="face", default=False,
+                      action="store_false", help="Use face detection")
+    (options, args) = parser.parse_args()
+    if len(args) > 1:
+        print "ERROR: Only one filename is supported as last argument"
+        return 1
+    src = args[0]
+    verb = options.verb
+    if not options.size:
+        dimensions = find_desktop_dimensions()
+    else:
+        dims = options.size.split('x')
+        dimensions = int(dims[0]), int(dims[1])
     base = os.path.basename(src)
     im = Image.open(src)
     if verb: print "source:%s (jpg %s)" % (src, im.size)
-    dimensions = find_desktop_dimensions()
     # Trick to also detect jpg and JPG case insensitive
     case_insensitive_re = re.compile(re.escape('jpg'), re.IGNORECASE)
     dest = case_insensitive_re.sub('png', base)
@@ -60,4 +78,4 @@ def main(src, verb=False):
     return 0
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1], True))
+    sys.exit(main())
