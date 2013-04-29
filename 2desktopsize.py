@@ -8,7 +8,7 @@ def resize(img, box, fit):
     '''Downsample the image.
     @param img: Image -  an Image-object
     @param box: tuple(x, y) - the bounding box of the result image
-    @param fix: boolean - crop the image to fill the box
+    @param fit: boolean - crop the image to fill the box
     '''
     #preresize image with factor 2, 4, 8 and fast algorithm
     factor = 1
@@ -33,7 +33,6 @@ def resize(img, box, fit):
     img.thumbnail(box, Image.ANTIALIAS)
     return img
 
-
 def find_desktop_dimensions():
     with os.popen('xdpyinfo') as f:
         output = f.readlines()
@@ -46,26 +45,19 @@ def find_desktop_dimensions():
         return int(dims[0]), int(dims[1])
     return
 
-def main(args=None):
-    
-
-src = sys.argv[1]
-im = Image.open(src)
-#print "source:%s (jpg %s)" % (src, im.size)
-
-dimensions = find_desktop_dimensions()
-
-base = os.path.basename(src)
-
-# Trick to also detect jpg and JPG case insensitive
-case_insensitive_re = re.compile(re.escape('jpg'), re.IGNORECASE)
-#dest = base.rstrip('jpg') + 'png'
-dest = case_insensitive_re.sub('png', base)
-#print "dest  :%s (png, %s)" % (dest, dimensions)
-
-resized_im = resize(im, dimensions, True)
-resized_im.save(dest)
-print dest
+def main(src, verb=False):
+    base = os.path.basename(src)
+    im = Image.open(src)
+    if verb: print "source:%s (jpg %s)" % (src, im.size)
+    dimensions = find_desktop_dimensions()
+    # Trick to also detect jpg and JPG case insensitive
+    case_insensitive_re = re.compile(re.escape('jpg'), re.IGNORECASE)
+    dest = case_insensitive_re.sub('png', base)
+    if verb: print "dest  :%s (png, %s)" % (dest, dimensions)
+    resized_im = resize(im, dimensions, True)
+    resized_im.save(dest)
+    print dest
+    return 0
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1], True))
