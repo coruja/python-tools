@@ -33,7 +33,7 @@ def split_lines(text):
 def _get_url(url):
     """ Fetch and parse the HTML data from given url """
     page_as_ls = urllib2.urlopen(url).readlines()
-    doc = ''.join()
+    doc = ''.join(page_as_ls)
     soup = BeautifulSoup(doc)
     res = [x['href'] for x in soup.findAll('a', href=True) \
                         if IMAGE_DIR in x['href']]
