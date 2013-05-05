@@ -41,8 +41,8 @@ def _get_url(url):
 
 def main(args):
     """ The main function """
-    if len(args) >= 2:
-        url = args[1]
+    if len(args) == 1:
+        url = args[0]
     else:    
         url = APOD_BASE_URL + APOD_HTML
 
