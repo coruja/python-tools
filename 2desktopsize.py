@@ -47,7 +47,8 @@ def find_desktop_dimensions():
     return
 
 def main():
-    parser = OptionParser()
+    usage = "usage: %prog [options] <jpg file to resize>"
+    parser = OptionParser(usage=usage)
     parser.add_option("-s", "--size", type="string", dest="size",
                       action="store", help="Dimensions (w x h)")
     parser.add_option("-v", "--verb", dest="verb", default=False,
@@ -55,8 +56,8 @@ def main():
     parser.add_option("-f", "--with-face-detect", dest="face", default=False,
                       action="store_false", help="Use face detection")
     (options, args) = parser.parse_args()
-    if len(args) > 1:
-        print "ERROR: Only one filename is supported as last argument"
+    if len(args) != 1:  # The number of remaining of arguments
+        parser.error("incorrect number of arguments")
         return 1
     src = args[0]
     verb = options.verb
