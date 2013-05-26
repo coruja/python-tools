@@ -15,8 +15,9 @@ import cv
 from optparse import OptionParser
 
 DEF_CASCADE = "./haarcascade_frontalface_alt.xml"
+SCALE = 4
 
-def detectObjects(grayscale, cascade_file=None):
+def detectObjects(grayscale, scale_factor, cascade_file=None):
     """Prints the locations of any faces found in given greyscale image"""
     storage = cv.CreateMemStorage(0)
     cv.EqualizeHist(grayscale, grayscale)
@@ -27,12 +28,15 @@ def detectObjects(grayscale, cascade_file=None):
     # The function returns a list of tuples, (rect, neighbors),
     # where rect is a CvRect specifying the object's extents and neighbors 
     # is a number of neighbors.
+    s = scale_factor
     centers = []
+    faces_coords = []
     if faces:
-        for (x,y,w,h), _ in faces:
-            c = int(x + w/2), int(y + h/2)
+        for (x,y,w,h), n in faces:
+            faces_coords.append(((x*s,y*s,w*s,h*s), n))
+            c = int(x*s + w*s/2), int(y*s + h*s/2)
             centers.append(c)
-    return faces, centers
+    return faces_coords, centers
 
 def main():
     usage = "usage: %prog [options] <file>"
@@ -62,13 +66,21 @@ def main():
 
     dest_file = options.dest_file or (img_name_base + "_detected_faces.jpg")
 
+    # Load the image and convert to grayscale
     grayscale = cv.LoadImageM(img_name, cv.CV_LOAD_IMAGE_GRAYSCALE)
-    faces, centers = detectObjects(grayscale, options.cascade_file or DEF_CASCADE)
+    # Create a thumbnail version of the original image to speed up detection
+    thumbnail = cv.CreateMat( int(grayscale.rows/SCALE), int(grayscale.cols/SCALE), grayscale.type)
+    cv.Resize(grayscale, thumbnail)
+
+    # Detect objects on the thumbnail version
+    faces, centers = detectObjects(thumbnail, SCALE, options.cascade_file or DEF_CASCADE)
+
     # To write a rectangle around the objects found:
     if faces and centers:
         ccx, ccy = 0, 0
         print "Found %d face(s) in %s" % (len(faces), os.path.basename(img_name))
         org_img = cv.LoadImage(img_name)
+        #org_img = thumbnail
         for i, ((x,y,w,h), n) in enumerate(faces):
             print("%d: w:%d, h:%d coord:[(%d,%d) -> (%d,%d)], "
             "center: %s, neighbors:%d" % (i, w, h, x, y, x+w, y+h, centers[i], n))
