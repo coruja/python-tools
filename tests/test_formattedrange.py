@@ -1,5 +1,5 @@
 import unittest
-from nose.tools import eq_
+from nose.tools import eq_, ok_
 from formattedrange import FormattedRange, FormattedDateRange, main
 from StringIO import StringIO
 from mock import __version__ as mock_ver
@@ -15,7 +15,6 @@ class TestFormattedrange(unittest.TestCase):
         fr = FormattedRange("a[1-%s]b" % self._max)
         for n, i in enumerate(fr.get()):
             eq_(i, "a%db" % (n + 1))
-        
 
     def test_range_formatted(self):
         # Use 2 digits numbers formatting
@@ -23,6 +22,24 @@ class TestFormattedrange(unittest.TestCase):
         for n, i in enumerate(fr.get()):
             eq_(i, "a%02db" % (n + 1))
 
+    def test_multiple_range(self):
+        fr = FormattedRange("a[1-%s]b[1-%s]c" % (2,3))
+        expected = ['a1b1c', 'a1b2c', 'a1b3c', 'a2b1c', 'a2b2c', 'a2b3c']
+        eq_(fr.get(), expected)
+
+    def test_rangewcomma(self):
+        fr = FormattedRange("a[1-2,4-5]b")
+        expected = ['a1b', 'a2b', 'a4b', 'a5b']
+        eq_(fr.get(), expected)
+
+    def test_multiple_rangewcomma(self):
+        fr = FormattedRange("a[1-2,4-5]b[6-7,9-10]c")
+        exp_len = 16
+        not_expected = ['a3b', 'b8c']
+        res = fr.get()
+        eq_(len(res), exp_len)
+        for i in not_expected:
+            ok_(i not in res)
 
 class TestFormattedDateRange(unittest.TestCase):
 

@@ -42,6 +42,7 @@ import sys
 import os
 import re
 import getopt
+import itertools
 
 myself = os.path.basename(sys.argv[0])
 
@@ -91,78 +92,81 @@ def str_numrange_to_list(x):
 """
 
 
+class FormattedRangeError(Exception):
+    pass
+
+
 class FormattedRange(object):
     """
     A class which knows how to parse a formatted range string and
     return it as a list of strings.
     """
 
-    my_regexp = re.compile('(.*)\[(\d+)\-(\d+)\](.*)')
-    my_regexp2 = re.compile('(.*)\[(.*)\](.*)')
+    my_regexp = re.compile("([^\[\]]*)(\[[^\[\]]*\])([^\[\]]*)")
+    my_regexp2 = re.compile('(\d+)\-(\d+)')
 
     def __init__(self, s, sep=None, sort=False):
         self._s = s
-        self._hascomma = ',' in self._s
-        self._formatted = False
-        self._extended = None
-        self._sorted = None
-        self._found = None
-        self._begin = None
-        self._end = None
-        self._msg = "%s%d%s"
         self._sep = sep or ' '
         self._sort = sort
-        if not self._hascomma:
-            self._found = self.my_regexp.match(self._s)
-        else:
-            self._found = self.my_regexp2.match(self._s)
+        self._msg = "%s%d%s"
+        self._zfill = 0
 
+        self._hascomma = False
+        self._formatted = False
+
+        self._int_ls = []
         self._setup()
 
-    def _get_range(self):
-        if self._found.group(2).startswith('0'):
-            self._formatted = True
-        if not self._hascomma:
-            self._res = self._found.group(2)
-            return (xrange(int(self._found.group(2)),
-                         int(self._found.group(3)) + 1), 4)
-        else:
-            self._res = self._found.group(2).split(',')[0]
-            if '-' in self._res:
-                self._res = self._res.split('-')[0]
-            return (str_numrange_to_list(self._found.group(2)), 3)
-
     def _setup(self):
-        if self._found is None:
-            return
-        self._begin = self._found.group(1)
-        self._extended, i = self._get_range()
-        self._end = self._found.group(i)
+        # a[01-02]b[01-10]c -> [('a', '[01-02]', 'b'), ('', '[01-10]', 'c')]
+        found = self.my_regexp.findall(self._s) or []
+        for n in found:
+            self._begin, self._extended, self._end = n[0], self._get_range(n[1]), n[2]
+            self._int_ls.append((self._begin, self._extended, self._end))
+
+    def _get_range(self, range_str):
+        range_str = range_str.replace('[', '').replace(']', '')
+        if range_str.startswith('0'):
+            self._formatted = True
+        found = self.my_regexp2.search(range_str)
+        if found:
+            self._zfill = len(found.group(1))
+            if ',' not in range_str:
+                return range(int(found.group(1)), int(found.group(2)) + 1)
+            else:
+                return str_numrange_to_list(range_str)
+        else:
+            raise FormattedRangeError("Could not parse range string")
 
     def get(self):
-        if self._found is None:
+        if not self._int_ls:
             return [self._s]
 
         if self._formatted:
             # Use X digits formatting
-            self._msg = "%s%0" + str(len(self._res)) + "d%s"
+            self._msg = "%s%0" + str(self._zfill) + "d%s"
+
+        expanded = [None] * len(self._int_ls)
+        i = 0
+        for n, (b, r, e) in enumerate(self._int_ls):
+            expanded[n] = []
+            for el in r:
+                msg = self._msg % (b, el, e)
+                expanded[n].append(msg)
 
         ret = []
-        if self._sort:
-            # Remove overlapping ranges
-            # Doing this will use more memory and expand the generator
-            # into a set with unique items and than convert the set to a list
-            self._sorted = list(set(self._extended[:]))
-            self._sorted.sort()
-            ls = self._sorted
-        else:
-            ls = self._extended
-        for i in ls:
-            ret.append(self._msg % (self._begin, i, self._end))
+        for element in itertools.product(*expanded):
+            ret.append(''.join(element))
+
         return ret
 
     def __str__(self):
         return self._sep.join(self.get())
+
+
+class FormattedDateRangeError(Exception):
+    pass
 
 
 class FormattedDateRange(FormattedRange):
@@ -175,17 +179,21 @@ class FormattedDateRange(FormattedRange):
         FormattedRange.__init__(self, s, sep=sep, sort=sort)
         self._msg = "%s%s%s"
 
-    def _get_range(self):
+    def _get_range(self, range_str):
+        range_str = range_str.replace('[', '').replace(']', '')
         from dateutil import parser, rrule
         self._formatted = False
-        self._res = self._found.group(2)
-        d1 = parser.parse(self._found.group(2))
-        d2 = parser.parse(self._found.group(3))
-        r = rrule.rrule(rrule.DAILY, dtstart=d1, until=d2)
-        return ([i.strftime(self._date_format) for i in r], 4)
+        found = self.my_regexp2.search(range_str)
+        if found:
+            d1 = parser.parse(found.group(1))
+            d2 = parser.parse(found.group(2))
+            r = rrule.rrule(rrule.DAILY, dtstart=d1, until=d2)
+            return [i.strftime(self._date_format) for i in r]
+        else:
+            raise FormattedDateRangeError("Could not parse range string")
 
     def get(self):
-        if self._found is None:
+        if not self._int_ls:
             return [self._s]
         ls = self._extended
         ret = []
