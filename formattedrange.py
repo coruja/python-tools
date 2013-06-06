@@ -185,9 +185,12 @@ class FormattedDateRange(FormattedRange):
         self._formatted = False
         found = self.my_regexp2.search(range_str)
         if found:
-            d1 = parser.parse(found.group(1))
-            d2 = parser.parse(found.group(2))
-            r = rrule.rrule(rrule.DAILY, dtstart=d1, until=d2)
+            try:
+                d1 = parser.parse(found.group(1))
+                d2 = parser.parse(found.group(2))
+                r = rrule.rrule(rrule.DAILY, dtstart=d1, until=d2)
+            except ValueError, e:
+                raise FormattedDateRangeError(e)
             return [i.strftime(self._date_format) for i in r]
         else:
             raise FormattedDateRangeError("Could not parse range string")
