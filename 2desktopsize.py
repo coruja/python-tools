@@ -5,9 +5,8 @@ import sys
 from PIL import Image, ImageOps
 from optparse import OptionParser
 
-DEBUG = False
 
-def resize(img, box):
+def resize(img, box, verb=False):
     '''Downsample the image.
     @param img: Image -  an Image-object
     @param box: tuple(x, y) - the bounding box of the result image
@@ -17,7 +16,7 @@ def resize(img, box):
     xbox, ybox = box
     x1 = y1 = 0
     x2, y2 = img.size
-    if DEBUG:
+    if verb:
         print "bounding box (wxh): %d, %d" % (xbox, ybox)
         print "img.size[0] = %d , img.size[1] = %d" % (x2, y2)
     if x2 / y2 != xbox / ybox:
@@ -27,7 +26,8 @@ def resize(img, box):
     factor = 1
     while (x2 / factor) > (2 * xbox) and (y2 * 2) / factor > (2 * ybox):
         factor *=2
-    if DEBUG:
+        fit = False
+    if verb:
         print "do fit ? %s" % ('y' if fit else 'n')
         print "resize factor: %d" % factor
     if factor > 1:
@@ -36,7 +36,7 @@ def resize(img, box):
     if fit:
         wRatio = 1.0 * x2/xbox # x=width
         hRatio = 1.0 * y2/ybox # y=height
-        if DEBUG:
+        if verb:
             print "hRatio: %f, wRatio: %f" % (hRatio, wRatio)
         if hRatio > wRatio:
             y1 = y2/2-ybox*wRatio/2
@@ -45,7 +45,7 @@ def resize(img, box):
             x1 = x2/2-xbox*hRatio/2
             x2 = x2/2+xbox*hRatio/2
         img = img.crop((int(x1),int(y1),int(x2),int(y2)))
-        if DEBUG:
+        if verb:
             print "crop coordinates: %d,%d,%d,%d" % (int(x1),int(y1),int(x2),int(y2))
     #Resize the image with best quality algorithm ANTI-ALIAS
     img.thumbnail(box, Image.ANTIALIAS)
@@ -71,9 +71,9 @@ def main():
     parser.add_option("-s", "--size", type="string", dest="size",
                       action="store", help="Dimensions (w x h)")
     parser.add_option("-v", "--verb", dest="verb", default=False,
-                      action="store_false", help="Verbosity")
+                      action="store_true", help="Verbosity")
     parser.add_option("-f", "--with-face-detect", dest="face", default=False,
-                      action="store_false", help="Use face detection")
+                      action="store_true", help="Use face detection")
     (options, args) = parser.parse_args()
     if len(args) != 1:  # The number of remaining of arguments
         parser.error("incorrect number of arguments")
@@ -92,7 +92,7 @@ def main():
     case_insensitive_re = re.compile(re.escape('jpg'), re.IGNORECASE)
     dest = case_insensitive_re.sub('png', base)
     if verb: print "dest  :%s (png, %s)" % (dest, dimensions)
-    resized_im = resize(im, dimensions)
+    resized_im = resize(im, dimensions, verb=verb)
     resized_im.save(dest)
     print dest
     return 0
