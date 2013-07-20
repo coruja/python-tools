@@ -1,4 +1,5 @@
-#!/usr/bin/env python
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
 """ A script to classify JPEG files based on the extracted EXIF metadata """
 from optparse import OptionParser
 import glob
@@ -8,6 +9,7 @@ import shutil
 import hashlib
 
 EXIF_DATE_KEY = 'Exif.Photo.DateTimeOriginal'
+EXIF_ALT_DATE_KEY = 'Exif.Image.DateTime'
 EXTENSIONS = ['.jpeg', '.JPEG', '.jpg', '.JPG']
 
 def md5_incomplete_ck(file_path):
@@ -32,22 +34,28 @@ def find_case_insensitve(dirname, extensions):
 def do_copy(src, dest, dry_run=False, domove=False):
     """ Copy/Move the photo into the destination directory """
     proceed = True
+    src = src.decode('utf-8')
     source_ck = md5_incomplete_ck(src)
-    moving_msg = '%s -> %s ...' % (src, dest)
+    moving_msg = "%s -> %s ..." % (src, dest)
+
     if os.path.exists(dest):
         target_ck = md5_incomplete_ck(dest)
         if source_ck == target_ck:
             moving_msg = ("Destination file already exists: %s, md5:%s..." %
                           (dest, target_ck[:6]))
             proceed = False
+            # remove the source if moving and the destination is identical
+            if not dry_run and domove:
+                os.remove(src)
         else:
-            # The contents is different but the same name, just rename
-            # to something different
+            # If the contents are different but the same name is used,
+            # then just rename the file to something different and unique
             # splitext: /a/b.jpg -> ('/a/b', '.jpg')
             split_ext = os.path.splitext(dest)
-            new_dest = split_ext[0] + "_%s" % target_ck[:6] + split_ext(dest)[1]
-            moving_msg = "RENAME - %s into %s" % (dest, new_dest)
+            new_dest = split_ext[0] + "_%s" % target_ck[:6] + split_ext[1]
+            moving_msg = "RENAME - %s into %s" % (src, new_dest)
             dest = new_dest
+
     if proceed and not dry_run:
         print moving_msg,
         if not domove:
@@ -57,11 +65,14 @@ def do_copy(src, dest, dry_run=False, domove=False):
     elif not proceed and not dry_run:
         print moving_msg,
     elif dry_run:
-        print "[dry-run]", moving_msg,
+        print "[dry-run]",
+        print moving_msg,
+
     print "Done."
 
 def run(cwdir, directory, dry_run, recursive, domove):
     """ Search for files under directory and call do_copy """
+    op_count = 0
     files = []
     if not recursive:
         files = find_case_insensitve(os.path.join(directory, '*'), EXTENSIONS)
@@ -76,21 +87,25 @@ def run(cwdir, directory, dry_run, recursive, domove):
     for f in files:
         # Read EXIF metadata and extract the date the photo was taken
         metadata = pyexiv2.ImageMetadata(f)
-        metadata.read()
+        try:
+            metadata.read()
+        except IOError, e:
+            print "Could not read metadata in %s: %s" % (f, e) 
+            continue
 
         if not metadata:
             print "No EXIF metadata found in %s" % f
             continue
 
-        for i in metadata.exif_keys:
-            if EXIF_DATE_KEY in i:
-                break
+        if EXIF_DATE_KEY in metadata.exif_keys:
+            date = metadata[EXIF_DATE_KEY].value
+        elif EXIF_ALT_DATE_KEY in metadata.exif_keys:
+            date = metadata[EXIF_ALT_DATE_KEY].value
         else:
-            print EXIF_DATE_KEY, "not found in %s" % f
+            print EXIF_DATE_KEY, EXIF_ALT_DATE_KEY, "not found in %s" % f
             continue
 
         file_name = os.path.basename(f)
-        date = metadata[EXIF_DATE_KEY].value
         date_directory_name = os.path.join(str(date.year),
                                             "%02d" % (date.month))
         # Create the directory
@@ -103,8 +118,15 @@ def run(cwdir, directory, dry_run, recursive, domove):
             else:
                 print '[dry-run]', directory_msg,
             print 'Done.'
-        moved_file_path = os.path.join(date_directory_path, file_name)
-        do_copy(f, moved_file_path, dry_run, domove)
+        moved_file_path = os.path.join(date_directory_path, file_name.decode('utf-8'))
+        try:
+            do_copy(f, moved_file_path, dry_run, domove)
+        except UnicodeEncodeError, e:
+            print "Error with parameters: ", f, moved_file_path, dry_run, domove
+            raise e
+        op_count += 1
+    print "Number of files copied/moved: %d" % op_count
+
 
 def main():
     """ The main function """
