@@ -46,10 +46,11 @@ def remove_pidfile(pidfile_path):
             raise
 
 class App(object):
-    def __init__(self, dir_name, logger, to_ignore=None):
+    def __init__(self, dir_name, logger, to_ignore=None, action=None):
         self.dir_name = dir_name
         self.logger = logger
         self.to_ignore = to_ignore
+        self.action = action
         self.exit_now = False
         self.err = False
         self.terminated = False
@@ -58,16 +59,16 @@ class App(object):
         # We do not check the contents of the subdirs, that is why we do not
         # continue the for loop with the next paths
         for paths, dirs, files in os.walk(self.dir_name):
-            logger.debug("paths: %s" % paths)
-            logger.debug("Found dirs: %s" % dirs)
-            logger.debug("Found files: %s" % files)
+            self.logger.debug("paths: %s" % paths)
+            self.logger.debug("Found dirs: %s" % dirs)
+            self.logger.debug("Found files: %s" % files)
             for i in dirs[:]:
-                if re.match(self.to_ignore, i):
-                    logger.debug("Ignored %s" % i)
+                if self.to_ignore and re.match(self.to_ignore, i):
+                    self.logger.debug("Ignored %s" % i)
                     dirs.remove(i)
             for i in files[:]:
-                if re.match(self.to_ignore, i):
-                    logger.debug("Ignored %s" % i)
+                if self.to_ignore and re.match(self.to_ignore, i):
+                    self.logger.debug("Ignored %s" % i)
                     files.remove(i)
             if not dirs and not files:
                 self.exit_now = True
@@ -75,17 +76,28 @@ class App(object):
             break
 
     def run(self, pid):
-        logger.info("Running with pid: %s" % pid)
+        self.logger.info("Running with pid: %s" % pid)
         while True:
             try:
                 self.do_main()
             except:
-                logger.error("Error in do_main: " % traceback.format_exc())
+                self.logger.error("Error in do_main: " % traceback.format_exc())
                 self.err = True
                 return self.err
             if self.exit_now:
                 return self.err
             time.sleep(20)
+
+    def do_action(self):
+        ret = None
+        self.logger.info("Execute action: %s" % self.action)
+        try:
+            ret = os.system(action)
+        except Exception, e:
+            self.logger.error("Action could not execute: %s" % e)
+        if ret != 0:
+            self.logger.error("Action failed")
+        return ret
 
 
 if __name__ == "__main__":
@@ -94,8 +106,6 @@ if __name__ == "__main__":
     if pidfile.is_locked():
         print "Error: %s is already running / remove the PID file and lock" % DAEMON_NAME
         sys.exit(1)
-
-    err = None
 
     logger = logging.getLogger("%s-log" % DAEMON_NAME)
     logger.setLevel(logging.INFO)
@@ -109,11 +119,12 @@ if __name__ == "__main__":
         parser.read(CONF_FILE)
         dir_name = parser.get('main', 'dir_name')
         to_ignore = parser.get('main', 'to_ignore')
+        action = parser.get('main', 'action')
     except Exception, e:
         print "%s\nERROR: There is something wrong with %s" % (e, CONF_FILE)
         sys.exit(1)
 
-    app = App(dir_name, logger, to_ignore)
+    app = App(dir_name, logger, to_ignore, action)
 
     def terminate(signum=None, frame=None):
         app.terminated = True
@@ -122,13 +133,18 @@ if __name__ == "__main__":
             remove_pidfile(pidfilename)
             pidfile.release()
         # Check the exit status
-        if err is not None:
-            logger.info("Exit with %s" % ('success' if not err else 'error'))
+        if app.err is not None:
+            if not app.err and app.exit_now:
+                logger.info("%s is now empty!" % dir_name)
+                rc = app.do_action()
+            logger.info("Exit with %s" % ('success' if not rc else 'error'))
+            sys.exit(rc)
         elif signum:
             logger.info("Killed by signal %d" % signum)
+            sys.exit(signum)
         else:
             logger.info("Exit with unknown status")
-        sys.exit(0)
+            sys.exit(-1)
 
     try:
         pidfile.acquire()
@@ -142,7 +158,7 @@ if __name__ == "__main__":
             # We have to get the pid after we've entered the context to get
             # the pid of the detached process
             pid = write_pid_to_pidfile(pidfilename)
-            err = app.run(pid)
+            app.run(pid)
         remove_pidfile(pidfilename)
         pidfile.release()
     except:
@@ -150,8 +166,6 @@ if __name__ == "__main__":
             logger.error(traceback.format_exc())
 
     if not app.terminated:
-        if app.exit_now:
-            logger.info("%s is now empty!" % dir_name)
         terminate()
 
     """
