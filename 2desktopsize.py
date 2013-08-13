@@ -6,53 +6,6 @@ from PIL import Image, ImageOps
 from optparse import OptionParser
 
 
-def resize(img, box, verb=False):
-    '''Downsample the image.
-    @param img: Image -  an Image-object
-    @param box: tuple(x, y) - the bounding box of the result image
-    @param fit: boolean - crop the image to fill the box
-    '''
-    fit = False
-    xbox, ybox = box
-    x1 = y1 = 0
-    x2, y2 = img.size
-    if verb:
-        print "bounding box (wxh): %d, %d" % (xbox, ybox)
-        print "img.size[0] = %d , img.size[1] = %d" % (x2, y2)
-    if x2 / y2 != xbox / ybox:
-        # The aspect ratio do not match, do fit
-        fit = True
-    #preresize image with factor 2, 4, 8 and fast algorithm
-    factor = 1
-    while (x2 / factor) > (2 * xbox) and (y2 * 2) / factor > (2 * ybox):
-        factor *=2
-        fit = False
-    if verb:
-        print "do fit ? %s" % ('y' if fit else 'n')
-        print "resize factor: %d" % factor
-    if factor > 1:
-        img.thumbnail((x2 / factor, y2 / factor), Image.NEAREST)
-    #calculate the cropping box and get the cropped part
-    if fit:
-        wRatio = 1.0 * x2/xbox # x=width
-        hRatio = 1.0 * y2/ybox # y=height
-        if verb:
-            print "hRatio: %f, wRatio: %f" % (hRatio, wRatio)
-        if hRatio > wRatio:
-            y1 = y2/2-ybox*wRatio/2
-            y2 = y2/2+ybox*wRatio/2
-        else:
-            x1 = x2/2-xbox*hRatio/2
-            x2 = x2/2+xbox*hRatio/2
-        img = img.crop((int(x1),int(y1),int(x2),int(y2)))
-        if verb:
-            print "crop coordinates: %d,%d,%d,%d" % (int(x1),int(y1),int(x2),int(y2))
-    #Resize the image with best quality algorithm ANTI-ALIAS
-    img.thumbnail(box, Image.ANTIALIAS)
-    img2 = Image.new("RGB", box, "black")
-    img2.paste(img, (0,0))
-    return img2
-
 def find_desktop_dimensions():
     with os.popen('xdpyinfo') as f:
         output = f.readlines()
@@ -64,6 +17,110 @@ def find_desktop_dimensions():
         dims = matched.group(1).split('x')
         return int(dims[0]), int(dims[1])
     return
+
+def resize_and_crop(img, size, crop_type='top', at=None, verb=False):
+    """
+    Resize and crop an image to fit the specified size.
+    """
+    # If height is higher we resize vertically, if not we resize horizontally
+    # Get current and desired ratio for the images
+    img_ratio = img.size[0] / float(img.size[1])
+    ratio = size[0] / float(size[1])
+    #The image is scaled/cropped vertically or horizontally depending on the ratio
+    box = None
+    org_img = img
+    if ratio > img_ratio:
+        if verb: print "ratio (%s) > img_ratio (%s)" % (ratio, img_ratio)
+        img = img.resize((size[0], size[0] * img.size[1] / img.size[0]),
+                Image.ANTIALIAS)
+        box1 = (0, 0, img.size[0], size[1])
+        box2 = (0, (img.size[1] - size[1]) / 2, img.size[0], (img.size[1] + size[1]) / 2)
+        box3 = (0, img.size[1] - size[1], img.size[0], img.size[1])
+        # Crop in the top, middle or bottom
+        if crop_type == 'top':
+            box = box1
+        elif crop_type == 'middle':
+            box = box2
+        elif crop_type == 'bottom':
+            box = box3
+        elif crop_type == 'at' and at is not None:
+            y1 = (at[1] - size[1]) / 2
+            if y1 < 0: y1 = 0
+            y2 = (at[1] + size[1]) / 2
+            if y2 > img.size[1]: y2 = img.size[1]
+            box = (0, int(y1), img.size[0], int(y2))
+            if verb: print box
+        elif crop_type == 'all':
+            img1, img2, img3 = img.crop(box1), img.crop(box2), img.crop(box3)
+            return img1, img2, img3
+        else :
+            raise ValueError('ERROR: invalid value for crop_type')
+        return img.crop(box)
+    elif ratio < img_ratio:
+        if verb: print "ratio (%s) < img_ratio (%s)" % (ratio, img_ratio)
+        img = img.resize((size[1] * img.size[0] / img.size[1], size[1]),
+                Image.ANTIALIAS)
+        # Crop in the top, middle or bottom
+        if crop_type == 'top':
+            box = (0, 0, size[0], img.size[1])
+        elif crop_type == 'middle':
+            box = ((img.size[0] - size[0]) / 2, 0, (img.size[0] + size[0]) / 2, img.size[1])
+        elif crop_type == 'bottom':
+            box = (img.size[0] - size[0], 0, img.size[0], img.size[1])
+        else :
+            raise ValueError('ERROR: invalid value for crop_type')
+        return img.crop(box)
+    else :
+        if verb: print "ratio (%s) = img_ratio (%s)" % (ratio, img_ratio)
+        # If the scale is the same, we do not need to crop
+        return img.resize((size[0], size[1]), Image.ANTIALIAS)
+
+def get_face_coordinates(img_name, verb=False):
+    import cv
+    DEF_CASCADE = "./haarcascade_frontalface_alt.xml"
+    SCALE = 4
+
+    def detectObjects(grayscale, scale_factor, cascade_file=None):
+        """Prints the locations of any faces found in given greyscale image"""
+        storage = cv.CreateMemStorage(0)
+        cv.EqualizeHist(grayscale, grayscale)
+        cascade = cv.Load(cascade_file)
+        faces = cv.HaarDetectObjects(grayscale, cascade, storage, 1.2, 2,
+                                     cv.CV_HAAR_DO_CANNY_PRUNING, (50,50))
+        # The function returns a list of tuples, (rect, neighbors),
+        # where rect is a CvRect specifying the object's extents and neighbors
+        # is a number of neighbors.
+        s = scale_factor
+        centers = []
+        faces_coords = []
+        if faces:
+            for (x,y,w,h), n in faces:
+                faces_coords.append(((x*s,y*s,w*s,h*s), n))
+                c = int(x*s + w*s/2), int(y*s + h*s/2)
+                centers.append(c)
+        return faces_coords, centers
+
+    # Load the image and convert to grayscale
+    grayscale = cv.LoadImageM(img_name, cv.CV_LOAD_IMAGE_GRAYSCALE)
+    # Create a thumbnail version of the original image to speed up detection
+    thumbnail = cv.CreateMat( int(grayscale.rows/SCALE), int(grayscale.cols/SCALE), grayscale.type)
+    cv.Resize(grayscale, thumbnail)
+    # Detect objects on the thumbnail version
+    faces, centers = detectObjects(thumbnail, SCALE, DEF_CASCADE)
+    if faces and centers:
+        ccx, ccy = 0, 0
+        if verb: print "Found %d face(s) in %s" % (len(faces), os.path.basename(img_name))
+        for i, ((x,y,w,h), n) in enumerate(faces):
+            if verb: print("%d: w:%d, h:%d coord:[(%d,%d) -> (%d,%d)], "
+                            "center: %s, neighbors:%d" %
+                                (i, w, h, x, y, x+w, y+h, centers[i], n))
+            cx, cy = centers[i]
+            ccx += cx
+            ccy += cy
+        ccx, ccy = ccx/len(faces), ccy/len(faces)
+        if verb: print "Average center coordinates: %s, %s" % (ccx, ccy)
+        return (ccx, ccy)
+    return None
 
 def main():
     usage = "usage: %prog [options] <jpg file to resize>"
@@ -89,12 +146,31 @@ def main():
     im = Image.open(src)
     if verb: print "source:%s (jpg %s)" % (src, im.size)
     # Trick to also detect jpg and JPG case insensitive
-    case_insensitive_re = re.compile(re.escape('jpg'), re.IGNORECASE)
-    dest = case_insensitive_re.sub('png', base)
-    if verb: print "dest  :%s (png, %s)" % (dest, dimensions)
-    resized_im = resize(im, dimensions, verb=verb)
-    resized_im.save(dest)
-    print dest
+    case_insensitive_re = re.compile(re.escape('.jpg'), re.IGNORECASE)
+    dest = case_insensitive_re.sub('.png', base)
+    basenm, ext = os.path.splitext(dest)
+
+    crop_type='all'
+    at=None
+    if options.face:
+        crop_type = 'at'
+        at = get_face_coordinates(src, verb)
+        if at is None:
+            raise ValueError('ERROR: could not find face coordinate(s)')
+
+    ims = resize_and_crop(im, dimensions, crop_type=crop_type, at=at, verb=verb)
+
+    if isinstance(ims, tuple):
+        for i, im in enumerate(ims):
+            dest_ = basenm + '_%d' % i + ext
+            if verb: print "dest  :%s (png, %s)" % (dest_, im.size)
+            im.save(dest_)
+            print dest_
+    else:
+        if verb: print "dest  :%s (png, %s)" % (dest, ims.size)
+        ims.save(dest)
+        print dest
+
     return 0
 
 if __name__ == "__main__":
