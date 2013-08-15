@@ -18,10 +18,7 @@ def find_desktop_dimensions():
         return int(dims[0]), int(dims[1])
     return
 
-def resize_and_crop(img, size, crop_type='top', at=None, verb=False):
-    """
-    Resize and crop an image to fit the specified size.
-    """
+def only_crop(img, size, crop_type='top', at=None, verb=False):
     # If height is higher we resize vertically, if not we resize horizontally
     # Get current and desired ratio for the images
     img_ratio = img.size[0] / float(img.size[1])
@@ -31,8 +28,7 @@ def resize_and_crop(img, size, crop_type='top', at=None, verb=False):
     org_img = img
     if ratio > img_ratio:
         if verb: print "ratio (%s) > img_ratio (%s)" % (ratio, img_ratio)
-        img = img.resize((size[0], size[0] * img.size[1] / img.size[0]),
-                Image.ANTIALIAS)
+        # (**) Resize the picture
         box1 = (0, 0, img.size[0], size[1])
         box2 = (0, (img.size[1] - size[1]) / 2, img.size[0], (img.size[1] + size[1]) / 2)
         box3 = (0, img.size[1] - size[1], img.size[0], img.size[1])
@@ -44,41 +40,76 @@ def resize_and_crop(img, size, crop_type='top', at=None, verb=False):
         elif crop_type == 'bottom':
             box = box3
         elif crop_type == 'at' and at is not None:
-            y1 = (at[1] - size[1]) / 2
-            if y1 < 0: y1 = 0
-            y2 = (at[1] + size[1]) / 2
-            if y2 > img.size[1]: y2 = img.size[1]
+            # I think the at coordinates must be transformed to match the coordinates
+            # after the picture img was resized at **
+            y1 = at[1] - size[1] / 2
+            if y1 < 0: 
+                y1 = 0
+            if y1 == 0:
+                y2 = size[1]
+            else:
+                y2 = at[1] + size[1] / 2
+            if y2 > img.size[1]:
+                y2 = img.size[1]
             box = (0, int(y1), img.size[0], int(y2))
             if verb: print box
         elif crop_type == 'all':
-            img1, img2, img3 = img.crop(box1), img.crop(box2), img.crop(box3)
-            return img1, img2, img3
-        else :
+            return img.crop(box1), img.crop(box2), img.crop(box3)
+        else:
             raise ValueError('ERROR: invalid value for crop_type')
         return img.crop(box)
     elif ratio < img_ratio:
         if verb: print "ratio (%s) < img_ratio (%s)" % (ratio, img_ratio)
-        img = img.resize((size[1] * img.size[0] / img.size[1], size[1]),
-                Image.ANTIALIAS)
+        box1 = (0, 0, size[0], img.size[1])
+        box2 = ((img.size[0] - size[0]) / 2, 0, (img.size[0] + size[0]) / 2, img.size[1])
+        box3 = (img.size[0] - size[0], 0, img.size[0], img.size[1])
         # Crop in the top, middle or bottom
         if crop_type == 'top':
-            box = (0, 0, size[0], img.size[1])
+            box = box1
         elif crop_type == 'middle':
-            box = ((img.size[0] - size[0]) / 2, 0, (img.size[0] + size[0]) / 2, img.size[1])
+            box = box2
         elif crop_type == 'bottom':
-            box = (img.size[0] - size[0], 0, img.size[0], img.size[1])
-        else :
+            box = box3
+        elif crop_type == 'at' and at is not None:
+            x1 = at[0] - size[0] / 2
+            if x1 < 0:
+                x1 = 0
+            if x1 == 0:
+                x2 = size[0]
+            else:
+                x2 = at[0] + size[0] / 2
+            if x2 > img.size[0]:
+                x2 = img.size[0]
+            box = (int(x1), 0, int(x2), img.size[1])
+            if verb: print box
+        elif crop_type == 'all':
+            return img.crop(box1), img.crop(box2), img.crop(box3)
+        else:
             raise ValueError('ERROR: invalid value for crop_type')
         return img.crop(box)
-    else :
+
+def only_resize(img, size, verb=False):
+    img_ratio = img.size[0] / float(img.size[1])
+    ratio = size[0] / float(size[1])
+    if ratio > img_ratio:
+        if verb: print "ratio (%s) > img_ratio (%s)" % (ratio, img_ratio)
+        # (**) Resize the picture
+        img = img.resize((size[0], size[0] * img.size[1] / img.size[0]),
+                Image.ANTIALIAS)
+    elif ratio < img_ratio:
+        if verb: print "ratio (%s) < img_ratio (%s)" % (ratio, img_ratio)
+        img = img.resize((size[1] * img.size[0] / img.size[1], size[1]),
+                Image.ANTIALIAS)
+    else:
         if verb: print "ratio (%s) = img_ratio (%s)" % (ratio, img_ratio)
         # If the scale is the same, we do not need to crop
-        return img.resize((size[0], size[1]), Image.ANTIALIAS)
+        img = img.resize((size[0], size[1]), Image.ANTIALIAS)
+    return img
 
 def get_face_coordinates(img_name, verb=False):
     import cv
     DEF_CASCADE = "./haarcascade_frontalface_alt.xml"
-    SCALE = 4
+    SCALE = 2
 
     def detectObjects(grayscale, scale_factor, cascade_file=None):
         """Prints the locations of any faces found in given greyscale image"""
@@ -114,10 +145,13 @@ def get_face_coordinates(img_name, verb=False):
             if verb: print("%d: w:%d, h:%d coord:[(%d,%d) -> (%d,%d)], "
                             "center: %s, neighbors:%d" %
                                 (i, w, h, x, y, x+w, y+h, centers[i], n))
+            cv.Rectangle(grayscale, (x,y), (x+w,y+h), 255, 2)
             cx, cy = centers[i]
             ccx += cx
             ccy += cy
         ccx, ccy = ccx/len(faces), ccy/len(faces)
+        cv.Rectangle(grayscale, (ccx-5,ccy-5), (ccx+5,ccy+5), 255, 5)
+        cv.SaveImage(img_name, grayscale)
         if verb: print "Average center coordinates: %s, %s" % (ccx, ccy)
         return (ccx, ccy)
     return None
@@ -152,13 +186,15 @@ def main():
 
     crop_type='all'
     at=None
+
+    im = only_resize(im, dimensions, verb=verb)
+    im.save("tmp.jpg")
     if options.face:
         crop_type = 'at'
-        at = get_face_coordinates(src, verb)
+        at = get_face_coordinates("tmp.jpg", verb)
         if at is None:
             raise ValueError('ERROR: could not find face coordinate(s)')
-
-    ims = resize_and_crop(im, dimensions, crop_type=crop_type, at=at, verb=verb)
+    ims = only_crop(im, dimensions, crop_type=crop_type, at=at, verb=verb)
 
     if isinstance(ims, tuple):
         for i, im in enumerate(ims):

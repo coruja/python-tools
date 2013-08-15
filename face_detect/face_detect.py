@@ -15,7 +15,7 @@ import cv
 from optparse import OptionParser
 
 DEF_CASCADE = "./haarcascade_frontalface_alt.xml"
-SCALE = 4
+SCALE = 2
 
 def detectObjects(grayscale, scale_factor, cascade_file=None):
     """Prints the locations of any faces found in given greyscale image"""
