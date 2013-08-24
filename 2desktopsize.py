@@ -188,8 +188,8 @@ def main():
     at=None
 
     im = only_resize(im, dimensions, verb=verb)
-    im.save("tmp.jpg")
     if options.face:
+        im.save("tmp.jpg")
         crop_type = 'at'
         at = get_face_coordinates("tmp.jpg", verb)
         if at is None:
@@ -200,12 +200,22 @@ def main():
         for i, im in enumerate(ims):
             dest_ = basenm + '_%d' % i + ext
             if verb: print "dest  :%s (png, %s)" % (dest_, im.size)
-            im.save(dest_)
-            print dest_
+            if not os.path.exists(dest_):
+                im.save(dest_)
+                print dest_
+            else:
+                raise Exception("Destination %s already exists, please rename it!"
+                                 % dest_)
     else:
-        if verb: print "dest  :%s (png, %s)" % (dest, ims.size)
-        ims.save(dest)
-        print dest
+        if not os.path.exists(dest):
+            if verb: print "dest  :%s (png, %s)" % (dest, ims.size)
+            ims.save(dest)
+            print dest
+        else:
+            dest_ = basenm + '_0' + ext
+            if verb: print "dest  :%s (png, %s)" % (dest_, ims.size)
+            ims.save(dest_)
+            print dest_
 
     return 0
 
