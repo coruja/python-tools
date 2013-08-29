@@ -106,7 +106,7 @@ def only_resize(img, size, verb=False):
         img = img.resize((size[0], size[1]), Image.ANTIALIAS)
     return img
 
-def get_face_coordinates(img_name, verb=False):
+def get_face_coordinates(img_name, avg_center, verb=False):
     import cv
     DEF_CASCADE = "./haarcascade_frontalface_alt.xml"
     SCALE = 2
@@ -153,7 +153,10 @@ def get_face_coordinates(img_name, verb=False):
         cv.Rectangle(grayscale, (ccx-5,ccy-5), (ccx+5,ccy+5), 255, 5)
         cv.SaveImage(img_name, grayscale)
         if verb: print "Average center coordinates: %s, %s" % (ccx, ccy)
-        return (ccx, ccy)
+        if avg_center:
+            return [(ccx, ccy)]
+        else:
+            return centers
     return None
 
 def main():
@@ -191,14 +194,24 @@ def main():
     if options.face:
         im.save("tmp.jpg")
         crop_type = 'at'
-        at = get_face_coordinates("tmp.jpg", verb)
+        at = get_face_coordinates("tmp.jpg", False, verb=verb)
         if at is None:
             raise ValueError('ERROR: could not find face coordinate(s)')
-    ims = only_crop(im, dimensions, crop_type=crop_type, at=at, verb=verb)
 
+    if at:
+        for i, c in enumerate(at):
+            ims = only_crop(im, dimensions, crop_type=crop_type, at=c, verb=verb)
+            do_save(i, im, ims, basenm, ext, dest, verb=verb)
+    else:
+        ims = only_crop(im, dimensions, crop_type=crop_type, at=at, verb=verb)
+        do_save(0, im, ims, basenm, ext, dest, verb=verb)
+
+    return 0
+
+def do_save(i, im, ims, basenm, ext, dest, verb=False):
     if isinstance(ims, tuple):
-        for i, im in enumerate(ims):
-            dest_ = basenm + '_%d' % i + ext
+        for j, im in enumerate(ims):
+            dest_ = basenm + '_%d' % j + ext
             if verb: print "dest  :%s (png, %s)" % (dest_, im.size)
             if not os.path.exists(dest_):
                 im.save(dest_)
@@ -212,12 +225,11 @@ def main():
             ims.save(dest)
             print dest
         else:
-            dest_ = basenm + '_0' + ext
+            dest_ = basenm + '_%d' % i + ext
             if verb: print "dest  :%s (png, %s)" % (dest_, ims.size)
             ims.save(dest_)
             print dest_
 
-    return 0
 
 if __name__ == "__main__":
     sys.exit(main())
