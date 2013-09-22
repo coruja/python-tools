@@ -44,7 +44,7 @@ def _get_url(url):
 TO_IGNORE = ("Tomorrow's picture", 'Videos & Discussion', 'Ask Me Anything',
 "Best of APOD", "Follow APOD", "APOD Public Talk",
 "Occasionally humorous", "APOD editor",
-"Did a relative see this", "Facebook", "Twitter")
+"Did a relative see this")
 
 def _get_explanation(page_as_ls):
     explanation = []
@@ -80,6 +80,7 @@ def main(args):
         return 0
 
     explanation = _get_explanation(page_as_ls)
+    #print explanation
 
     # Trick to also detect jpg and JPG case insensitive
     case_insensitive_re = re.compile(re.escape('jpg'), re.IGNORECASE)
@@ -88,7 +89,7 @@ def main(args):
     html = ''.join(explanation)    
     text = STRIP_TAGS.sub('', html).lstrip()
     explanation_f = open(explanation_fn, 'w')
-    contents = title + ":\n" + split_lines(text)
+    contents = title + "\n" + split_lines(text)
     explanation_f.write(contents)
     explanation_f.close()
 
