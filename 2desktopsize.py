@@ -168,6 +168,8 @@ def main():
                       action="store_true", help="Verbosity")
     parser.add_option("-f", "--with-face-detect", dest="face", default=False,
                       action="store_true", help="Use face detection")
+    parser.add_option("-j", "--jpg", dest="jpg", default=False,
+                      action="store_true", help="Force JPG output instead of PNG")
     (options, args) = parser.parse_args()
     if len(args) != 1:  # The number of remaining of arguments
         parser.error("incorrect number of arguments")
@@ -198,21 +200,28 @@ def main():
         if at is None:
             raise ValueError('ERROR: could not find face coordinate(s)')
 
+    force_jpeg = options.jpg
+
     if at:
         for i, c in enumerate(at):
             ims = only_crop(im, dimensions, crop_type=crop_type, at=c, verb=verb)
-            do_save(i, im, ims, basenm, ext, dest, verb=verb)
+            do_save(i, im, ims, basenm, ext, dest, force_jpeg=force_jpeg, verb=verb)
     else:
         ims = only_crop(im, dimensions, crop_type=crop_type, at=at, verb=verb)
-        do_save(0, im, ims, basenm, ext, dest, verb=verb)
+        do_save(0, im, ims, basenm, ext, dest, force_jpeg=force_jpeg, verb=verb)
 
     return 0
 
-def do_save(i, im, ims, basenm, ext, dest, verb=False):
+def do_save(i, im, ims, basenm, ext, dest, force_jpeg=False, verb=False):
+    if force_jpeg:
+        ext = ".jpg"
+        dest = basenm + ext
+    if ims is None:
+        ims = im
     if isinstance(ims, tuple):
         for j, im in enumerate(ims):
             dest_ = basenm + '_%d' % j + ext
-            if verb: print "dest  :%s (png, %s)" % (dest_, im.size)
+            if verb: print "dest  :%s (%s, %s)" % (dest_, ext, im.size)
             if not os.path.exists(dest_):
                 im.save(dest_)
                 print dest_
@@ -221,12 +230,12 @@ def do_save(i, im, ims, basenm, ext, dest, verb=False):
                                  % dest_)
     else:
         if not os.path.exists(dest):
-            if verb: print "dest  :%s (png, %s)" % (dest, ims.size)
+            if verb: print "dest  :%s (%s, %s)" % (dest, ext, ims.size)
             ims.save(dest)
             print dest
         else:
             dest_ = basenm + '_%d' % i + ext
-            if verb: print "dest  :%s (png, %s)" % (dest_, ims.size)
+            if verb: print "dest  :%s (%s, %s)" % (dest_, ext, ims.size)
             ims.save(dest_)
             print dest_
 
