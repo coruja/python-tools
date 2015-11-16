@@ -9,6 +9,9 @@ The default location of the DHCP leases file is: /var/lib/dhcp/dhcpd.leases
 
 Dependencies:
 python-pyparsing
+
+Copyright 2015 coruja
+SPDX-License-Identifier: GPL-2.0
 """
 from pyparsing import (nums, hexnums, alphanums, Suppress, Combine, Word,
                        Literal, oneOf, ZeroOrMore, Group, QuotedString, Dict,
